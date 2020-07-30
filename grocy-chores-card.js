@@ -1,15 +1,15 @@
 customElements.whenDefined('card-tools').then(() => {
   let cardTools = customElements.get('card-tools');
-    
+
   class GrocyChoresCard extends cardTools.LitElement {
-    
+
     setConfig(config) {
       if (!config.entity) {
         throw new Error('Please define entity');
       }
       this.config = config;
     }
-    
+
     calculateDueDate(dueDate){
       var oneDay = 24*60*60*1000; // hours*minutes*seconds*milliseconds
       var today = new Date();
@@ -18,7 +18,7 @@ customElements.whenDefined('card-tools').then(() => {
       var splitDate = dueDate.split(/[- :T]/)
       var parsedDueDate = new Date(splitDate[0], splitDate[1]-1, splitDate[2]);
       parsedDueDate.setHours(0,0,0,0)
-      
+
       var dueInDays;
       if(today > parsedDueDate) {
         dueInDays = -1;
@@ -82,7 +82,7 @@ customElements.whenDefined('card-tools').then(() => {
             : ""}
           </ha-card>`}
       `;
-    }    
+    }
     _track(choreId){
       this._hass.callService("grocy", "execute_chore", {
         chore_id: choreId,
@@ -125,20 +125,21 @@ customElements.whenDefined('card-tools').then(() => {
           </style>
         `;
       }
-    
+
     set hass(hass) {
       this._hass = hass;
-      
+
       const entity = hass.states[this.config.entity];
       this.header = this.config.title == null ? "Chores" : this.config.title;
       this.userId = this.config.user_id == null ? 1 : this.config.user_id;
 
       this.show_quantity = this.config.show_quantity == null ? null : this.config.show_quantity;
       this.show_days = this.config.show_days == null ? null : this.config.show_days;
+      this.assigned_user_id = this.config.assigned_user_id == null ? null : this.config.assigned_user_id;
 
       if (entity.state == 'unknown')
         throw new Error("The Grocy sensor is unknown.");
-        
+
       var chores = entity.attributes.items;
       var allChores = []
 
@@ -147,37 +148,43 @@ customElements.whenDefined('card-tools').then(() => {
           if (a._next_estimated_execution_time != null && b._next_estimated_execution_time != null) {
             var aSplitDate = a._next_estimated_execution_time.split(/[- :T]/)
             var bSplitDate = b._next_estimated_execution_time.split(/[- :T]/)
-  
+
             var aParsedDueDate = new Date(aSplitDate[0], aSplitDate[1]-1, aSplitDate[2]);
             var bParsedDueDate = new Date(bSplitDate[0], bSplitDate[1]-1, bSplitDate[2]);
-  
+
             return aParsedDueDate - bParsedDueDate;
           }
             return;
         })
 
+
         chores.map(chore =>{
-          var dueInDays = chore._next_estimated_execution_time ? this.calculateDueDate(chore._next_estimated_execution_time) : 10000;
-          chore.dueInDays = dueInDays;
-          if(this.show_days != null) {
-            if(dueInDays <= this.show_days){
-              allChores.push(chore);
-            }
-            else if(chore._next_estimated_execution_time != null && chore._next_estimated_execution_time.slice(0,4) == "2999") {
-              chore._next_estimated_execution_time = "-";
-              allChores.unshift(chore)
+          if(this.assigned_user_id != null) {
+            if(this.assigned_user_id == chore._next_execution_assigned_to_user_id) {
+              var dueInDays = chore._next_estimated_execution_time ? this.calculateDueDate(chore._next_estimated_execution_time) : 10000;
+              chore.dueInDays = dueInDays;
+              if(this.show_days != null) {
+                if(dueInDays <= this.show_days){
+                  allChores.push(chore);
+                }
+                else if(chore._next_estimated_execution_time != null && chore._next_estimated_execution_time.slice(0,4) == "2999") {
+                  chore._next_estimated_execution_time = "-";
+                  allChores.unshift(chore)
+                }
+              }
+              else {
+                if(chore._next_estimated_execution_time == null || dueInDays == 10000 || chore._next_estimated_execution_time.slice(0,4) == "2999"){
+                  chore._next_estimated_execution_time = "-";
+                  allChores.unshift(chore)
+                }
+                else
+                  allChores.push(chore);
+              }
             }
           }
-          else {
-            if(chore._next_estimated_execution_time == null || dueInDays == 10000 || chore._next_estimated_execution_time.slice(0,4) == "2999"){
-              chore._next_estimated_execution_time = "-";
-              allChores.unshift(chore)
-            }
-            else
-              allChores.push(chore);
-          }
+
         })
-        
+
         if(this.show_quantity != null){
           this.chores = allChores.slice(0, this.show_quantity);
           this.notShowing = allChores.slice(this.show_quantity);
@@ -189,22 +196,22 @@ customElements.whenDefined('card-tools').then(() => {
       }
       else
         this.chores = allChores;
-      
+
       this.state = entity.state
       this.requestUpdate();
     }
-    
 
-  
+
+
       // @TODO: This requires more intelligent logic
     getCardSize() {
       return 3;
     }
   }
-  
+
   customElements.define('grocy-chores-card', GrocyChoresCard);
   });
-  
+
   window.setTimeout(() => {
     if(customElements.get('card-tools')) return;
     customElements.define('grocy-chores-card', class extends HTMLElement{
